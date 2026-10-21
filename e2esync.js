@@ -15,11 +15,21 @@
     if (c.e) o.e = c.e;
     return prefix + btoa(unescape(encodeURIComponent(JSON.stringify(o))));
   }
+  // 貼り付けた文字列から、最初のコードだけを取り出して読む
+  // （前後の余計な文字・改行・ゼロ幅文字・全角コロン・二重貼り付けがあっても読めるように）
   function decodeCode(prefix, s) {
-    s = (s || '').trim().replace(/\s+/g, '');
-    if (s.indexOf(prefix) !== 0) return null;
+    s = String(s || '').replace(/[\s​-‍⁠﻿]+/g, '').replace(/：/g, ':');
+    var i = s.indexOf(prefix);
+    if (i < 0) return null;
+    var body = s.slice(i + prefix.length);
+    var next = body.indexOf(prefix);
+    if (next >= 0) body = body.slice(0, next);
+    var m = /^[A-Za-z0-9+\/_-]+=*/.exec(body);
+    if (!m) return null;
+    body = m[0].replace(/-/g, '+').replace(/_/g, '/');
+    while (body.length % 4) body += '=';
     try {
-      var o = JSON.parse(decodeURIComponent(escape(atob(s.slice(prefix.length)))));
+      var o = JSON.parse(decodeURIComponent(escape(atob(body))));
       if (!o || !okUrl(o.u) || typeof o.k !== 'string' || !o.k) return null;
       var c = { u: o.u, k: o.k };
       if (typeof o.e === 'string' && unb64(o.e).length === 32) c.e = o.e;
