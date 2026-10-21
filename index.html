@@ -1,0 +1,1231 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>マインドマップ帳</title>
+<meta name="description" content="スマホとPCで同期するマインドマップ。中身は端末で暗号化して保存。">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="マインドマップ">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#eef1f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#12161c" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Zen+Maru+Gothic:wght@500;700&display=swap">
+<style>
+/* Layout: 上部に表示中マップ名、その下に中心から枝が伸びるマップ（スマホ幅では縦のアウトライン）。項目をタップすると上から編集パネルが開く（スマホのキーボードに隠れないように上寄せ） */
+:root {
+  --bg: #eef1f5;
+  --surface: #ffffff;
+  --cell: #ffffff;
+  --ink: #1d2430;
+  --muted: #586273;
+  --line: #c6cdd8;
+  --accent: #2f7d6d;
+  --accent-ink: #ffffff;
+  --danger: #b23a3a;
+  --done: #2e7d4f;
+  --on-pastel: #18202b;
+  --scrim: rgba(20, 26, 36, .45);
+  --p-g: #c5e1a5; --p-p: #f4a3c0; --p-y: #ffe08a; --p-o: #ffc98a; --p-c: #8ee0ea;
+  --p-b: #98cbf5; --p-t: #8dd0c6; --p-v: #a9b0e0; --p-r: #f2a7a0; --p-n: #e3e6eb;
+  --font-display: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif;
+  --font-body: "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161c; --surface: #1a2029; --cell: #222a35; --ink: #e7ecf2; --muted: #a3aebd;
+    --line: #3a4554; --accent: #7cc9b8; --accent-ink: #10151c; --danger: #f09a9a; --done: #7bd39a;
+    --on-pastel: #151a22; --scrim: rgba(0, 0, 0, .6);
+    --p-g: #aecb8c; --p-p: #e295b2; --p-y: #ebcd72; --p-o: #eab474; --p-c: #79cdd7;
+    --p-b: #86b8e2; --p-t: #7bbdb3; --p-v: #9aa1d4; --p-r: #e0968f; --p-n: #c4c9d1;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161c; --surface: #1a2029; --cell: #222a35; --ink: #e7ecf2; --muted: #a3aebd;
+  --line: #3a4554; --accent: #7cc9b8; --accent-ink: #10151c; --danger: #f09a9a; --done: #7bd39a;
+  --on-pastel: #151a22; --scrim: rgba(0, 0, 0, .6);
+  --p-g: #aecb8c; --p-p: #e295b2; --p-y: #ebcd72; --p-o: #eab474; --p-c: #79cdd7;
+  --p-b: #86b8e2; --p-t: #7bbdb3; --p-v: #9aa1d4; --p-r: #e0968f; --p-n: #c4c9d1;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); }
+html { -webkit-text-size-adjust: 100%; }
+body::before {
+  content: "";
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: env(safe-area-inset-top, 0px);
+  background: var(--bg);
+  z-index: 30;
+}
+[hidden] { display: none !important; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0;
+  padding-block: 0 calc(32px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  -webkit-tap-highlight-color: transparent;
+}
+button { font: inherit; color: inherit; }
+button:focus-visible, textarea:focus-visible, input:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+}
+.code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; word-break: break-all; }
+
+/* ヘッダー */
+.top {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 10;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-block: 10px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.map-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.map-btn .eyebrow { font-size: 11px; color: var(--muted); letter-spacing: .06em; }
+.map-btn .name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.35;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-btn .name::after { content: " ▾"; color: var(--muted); font-size: 13px; }
+.icon-btn {
+  flex: none;
+  width: 48px; height: 48px;
+  border-radius: 12px;
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  font-size: 20px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.icon-btn:disabled { opacity: .35; cursor: default; }
+.icon-btn svg { width: 24px; height: 24px; }
+#syncBtn[data-state="busy"] svg { animation: spin 1.2s linear infinite; }
+#syncBtn[data-state="error"] { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
+#syncBtn[data-state="ok"] { color: var(--done); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.status {
+  max-width: 1100px;
+  margin: -4px auto 8px;
+  font-size: 12px;
+  color: var(--muted);
+  min-height: 1.6em;
+}
+.status.err { color: var(--danger); }
+
+main { max-width: 1100px; margin: 0 auto; }
+
+/* マップ */
+.map-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 4px 0 14px; }
+.map-bar .hint { color: var(--muted); font-size: 12.5px; }
+.map { overflow-x: auto; padding-bottom: 8px; }
+.tree, .tree ul { list-style: none; margin: 0; padding: 0; }
+.tree li { position: relative; display: flex; align-items: center; padding-left: 16px; }
+.tree > li { padding-left: 0; }
+.tree ul {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-left: 16px;
+  gap: 5px;
+  min-width: 0;
+}
+.tree ul::before { content: ""; position: absolute; left: 0; top: 50%; width: 16px; border-top: 2px solid var(--line); }
+.tree ul > li::before { content: ""; position: absolute; left: 0; top: 50%; width: 16px; border-top: 2px solid color-mix(in srgb, var(--k, var(--line)) 70%, var(--line)); }
+.tree ul > li::after { content: ""; position: absolute; left: 0; top: -3px; bottom: -3px; border-left: 2px solid var(--line); }
+.tree ul > li:first-child::after { top: 50%; }
+.tree ul > li:last-child::after { bottom: 50%; }
+.tree ul > li:only-child::after { display: none; }
+.nrow { flex: none; display: flex; align-items: stretch; }
+.node {
+  flex: none;
+  border: 1.5px solid var(--line);
+  background: var(--cell);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 7px 11px;
+  text-align: left;
+  cursor: pointer;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+  position: relative;
+  min-height: 40px;
+}
+.nrow.has-fold > .node { border-radius: 10px 0 0 10px; }
+.root > .nrow > .node {
+  width: 150px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  padding: 14px 12px;
+  text-align: center;
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+.root > .nrow > .node.filled { background: var(--k); color: var(--on-pastel); border-color: transparent; }
+.branch > .nrow > .node {
+  width: 170px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  background: color-mix(in srgb, var(--k) 28%, var(--cell));
+  border-color: color-mix(in srgb, var(--k) 65%, var(--line));
+}
+.leaf > .nrow > .node {
+  width: 200px;
+  font-size: 13.5px;
+  background: color-mix(in srgb, var(--k, var(--cell)) 9%, var(--cell));
+  border-color: color-mix(in srgb, var(--k, var(--line)) 50%, var(--line));
+}
+.tree .node.filled { background: var(--own); color: var(--on-pastel); border-color: color-mix(in srgb, var(--own) 70%, var(--on-pastel)); }
+.node.empty { color: var(--muted); border-style: dashed; }
+.node.done { padding-right: 32px; }
+.node.done::after {
+  content: "✓";
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--done); color: var(--surface);
+  font-size: 11px; font-weight: 700; display: grid; place-items: center;
+}
+.fold {
+  flex: none;
+  width: 32px;
+  border: 1.5px solid color-mix(in srgb, var(--k, var(--line)) 60%, var(--line));
+  border-left: none;
+  border-radius: 0 10px 10px 0;
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 0;
+}
+.fold .ct { display: block; font-size: 10px; font-variant-numeric: tabular-nums; }
+
+/* ボタン */
+.btn {
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  border-radius: 10px;
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn.small { min-height: 38px; font-size: 13px; padding: 0 12px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
+.btn.armed { background: var(--danger); color: var(--surface); border-color: var(--danger); }
+.btn:disabled { opacity: .4; cursor: default; }
+
+/* パネル */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--scrim);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
+  padding-left: max(10px, env(safe-area-inset-left, 0px));
+  padding-right: max(10px, env(safe-area-inset-right, 0px));
+}
+.sheet {
+  width: min(100%, 520px);
+  max-height: calc(100% - 20px);
+  overflow-y: auto;
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .25);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sheet-head { display: flex; align-items: baseline; gap: 10px; justify-content: space-between; flex-wrap: wrap; }
+.sheet h2 { font-family: var(--font-display); font-weight: 700; font-size: 18px; margin: 0; text-wrap: balance; }
+.sheet h3 { font-size: 12px; font-weight: 500; letter-spacing: .06em; color: var(--muted); margin: 6px 0 0; }
+.where { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1.45;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  background: var(--cell);
+  color: var(--ink);
+  padding: 10px 12px;
+  resize: vertical;
+}
+.counter { font-size: 12px; color: var(--muted); text-align: right; margin-top: -8px; font-variant-numeric: tabular-nums; }
+.counter.over { color: var(--danger); }
+fieldset { border: none; padding: 0; margin: 0; }
+legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bottom: 6px; padding: 0; }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; }
+.sw {
+  height: 44px;
+  border-radius: 10px;
+  border: 1.5px solid var(--line);
+  background: var(--k, var(--cell));
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--on-pastel);
+}
+.sw.none { color: var(--muted); background: var(--cell); }
+.sw[aria-pressed="true"] { outline: 3px solid var(--ink); outline-offset: 1px; }
+.toggle { display: flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 500; cursor: pointer; }
+.toggle input { width: 22px; height: 22px; accent-color: var(--done); }
+.sheet-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sheet-actions .sp { flex: 1; }
+.struct { padding-top: 10px; border-top: 1px solid var(--line); }
+.clist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.clist li { display: flex; gap: 6px; align-items: stretch; }
+.copen {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  background: var(--cell);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.copen[aria-current="true"] { border-color: var(--accent); box-shadow: inset 4px 0 0 var(--accent); }
+.copen b { display: block; font-family: var(--font-display); font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.copen span { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.msg { font-size: 13px; margin: 0; min-height: 1.4em; color: var(--done); }
+.msg.err { color: var(--danger); }
+.note { font-size: 12px; color: var(--muted); margin: 0; line-height: 1.6; }
+.copybox { width: 100%; font-size: 13px; min-height: 160px; }
+
+.empty-state {
+  background: var(--surface);
+  border: 1.5px dashed var(--line);
+  border-radius: 14px;
+  padding: 28px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  max-width: 520px;
+  margin: 0 auto;
+}
+.empty-state h2 { font-family: var(--font-display); margin: 0; font-size: 18px; }
+.empty-state p { margin: 0; color: var(--muted); }
+
+/* スマホ幅では縦に並ぶアウトライン型にする */
+@media (max-width: 640px) {
+  .tree li { display: block; padding-left: 0; }
+  .tree ul { gap: 6px; padding-left: 22px; margin-top: 6px; }
+  .tree ul::before { display: none; }
+  .tree ul > li::before { left: -12px; top: 20px; width: 12px; }
+  .tree ul > li::after { left: -12px; top: -6px; bottom: 0; }
+  .tree ul > li:first-child::after { top: -6px; }
+  .tree ul > li:last-child::after,
+  .tree ul > li:only-child::after { display: block; bottom: auto; height: 26px; }
+  .nrow { max-width: 100%; }
+  .root > .nrow > .node { width: auto; max-width: 100%; min-width: 140px; text-align: left; }
+  .branch > .nrow > .node, .leaf > .nrow > .node { width: auto; min-width: 120px; max-width: calc(100% - 32px); }
+}
+@media (min-width: 700px) {
+  .scrim { align-items: center; }
+}
+</style>
+
+<header class="top">
+  <button id="mapBtn" class="map-btn" type="button" aria-haspopup="dialog">
+    <span class="eyebrow">マインドマップ</span>
+    <span id="mapName" class="name">マップなし</span>
+  </button>
+  <button id="undoBtn" class="icon-btn" type="button" aria-label="元に戻す" title="元に戻す" disabled>↶</button>
+  <button id="syncBtn" class="icon-btn" type="button" aria-label="同期の設定" title="同期の設定" data-state="off">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8.5a4 4 0 0 1-.5 9.5H7z"/><path d="M10 13.5l2-2 2 2M12 11.5V16"/></svg>
+  </button>
+</header>
+<div id="status" class="status" role="status" aria-live="polite"></div>
+
+<main>
+  <div id="emptyState" class="empty-state" hidden>
+    <h2>マインドマップがまだありません</h2>
+    <p>中心にテーマを書き、そこから思いついたことを枝のように広げていきます。</p>
+    <button id="emptyNew" class="btn primary" type="button">新しいマップを作る</button>
+    <button id="emptySync" class="btn" type="button">同期を設定する</button>
+  </div>
+
+  <section id="vm" aria-label="マインドマップ" hidden>
+    <div class="map-bar">
+      <button id="addTop" class="btn small primary" type="button">＋ 中心に枝を追加</button>
+      <button id="openAll" class="btn small" type="button">すべて開く</button>
+      <button id="closeAll" class="btn small" type="button">枝を閉じる</button>
+      <span class="hint">項目をタップすると、編集・子の追加・並べ替えができます。</span>
+    </div>
+    <div class="map"><ul id="tree" class="tree"></ul></div>
+  </section>
+</main>
+
+<!-- 項目の編集 -->
+<div id="edWrap" class="scrim" hidden>
+  <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="edTitle">
+    <div class="sheet-head">
+      <h2 id="edTitle">項目を編集</h2>
+      <span id="edWhere" class="where"></span>
+    </div>
+    <textarea id="edText" rows="2" maxlength="80" aria-label="項目の内容"></textarea>
+    <div id="edCount" class="counter">0 / 80</div>
+    <fieldset>
+      <legend>色</legend>
+      <div id="edColors" class="swatches"></div>
+    </fieldset>
+    <label class="toggle"><input id="edDone" type="checkbox"> 達成した</label>
+    <div id="edStruct" class="sheet-actions struct">
+      <button id="edAddChild" class="btn small" type="button">＋ 子を追加</button>
+      <button id="edAddSib" class="btn small" type="button">＋ 同じ階層に追加</button>
+      <button id="edUp" class="btn small" type="button" aria-label="ひとつ上へ移動">↑ 上へ</button>
+      <button id="edDown" class="btn small" type="button" aria-label="ひとつ下へ移動">↓ 下へ</button>
+      <button id="edOut" class="btn small" type="button" aria-label="ひとつ上の階層へ移す">← 階層を上げる</button>
+      <button id="edIn" class="btn small" type="button" aria-label="すぐ上の項目の子にする">→ 階層を下げる</button>
+    </div>
+    <p id="edMsg" class="msg err" role="status"></p>
+    <div class="sheet-actions">
+      <button id="edDel" class="btn danger" type="button">削除</button>
+      <span class="sp"></span>
+      <button id="edCancel" class="btn" type="button">キャンセル</button>
+      <button id="edNext" class="btn" type="button" hidden>保存して続けて追加</button>
+      <button id="edSave" class="btn primary" type="button">保存</button>
+    </div>
+  </section>
+</div>
+
+<!-- マップ一覧・データ -->
+<div id="csWrap" class="scrim" hidden>
+  <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="csTitle">
+    <div class="sheet-head">
+      <h2 id="csTitle">マップ一覧</h2>
+      <button id="csClose" class="btn small" type="button">閉じる</button>
+    </div>
+    <ul id="csList" class="clist"></ul>
+    <div class="sheet-actions">
+      <button id="csNew" class="btn primary" type="button">＋ 新しいマップ</button>
+      <button id="csDup" class="btn" type="button">表示中を複製</button>
+    </div>
+    <h3>データの書き出し・読み込み</h3>
+    <div class="sheet-actions">
+      <button id="csExport" class="btn small" type="button">JSONで書き出し</button>
+      <button id="csImport" class="btn small" type="button">JSONを読み込む</button>
+      <button id="csCopy" class="btn small" type="button">テキストでコピー</button>
+      <input id="csFile" type="file" accept=".json,application/json" hidden>
+    </div>
+    <p class="note">マンダラチャート帳で書き出したJSONも読み込めます（中心→テーマ→行動の枝に変換）。</p>
+    <textarea id="csCopyBox" class="copybox" readonly hidden aria-label="コピー用テキスト"></textarea>
+    <p id="csMsg" class="msg" role="status"></p>
+  </section>
+</div>
+
+<!-- 同期の設定 -->
+<div id="stWrap" class="scrim" hidden>
+  <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="stTitle">
+    <div class="sheet-head">
+      <h2 id="stTitle">スマホとPCの同期</h2>
+      <button id="stClose" class="btn small" type="button">閉じる</button>
+    </div>
+    <p id="stState" class="note"></p>
+    <div id="stConnectBox">
+      <label for="stCode" class="note">接続コード（MINDMAP1: から始まる文字列）。1台目は許可リストの招待コード、2台目以降は1台目で表示した「端末用の接続コード」を貼ります。</label>
+      <textarea id="stCode" class="code" rows="3" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+      <div class="sheet-actions" style="margin-top:8px">
+        <button id="stConnect" class="btn primary" type="button">接続する</button>
+      </div>
+    </div>
+    <div id="stConnected" class="sheet-actions">
+      <button id="stSyncNow" class="btn primary" type="button">今すぐ同期</button>
+      <button id="stShowCode" class="btn" type="button">端末用の接続コードを表示</button>
+      <button id="stOff" class="btn danger" type="button">接続を解除</button>
+    </div>
+    <textarea id="stCodeView" class="code" rows="3" readonly hidden aria-label="端末用の接続コード"></textarea>
+    <p id="stMsg" class="msg" role="status"></p>
+    <p class="note">マップの中身はこの端末で暗号化してから送ります。Googleドライブには暗号文だけが保存され、管理者にも読めません。そのため「端末用の接続コード」をなくすと、ほかの端末からデータを取り出せなくなります。控えを安全な場所に保管してください。人に見せたり、公開の場所に貼ったりしないでください。</p>
+  </section>
+</div>
+<script src="e2esync.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (s) { return document.querySelector(s); };
+  var MAXLEN = 80, ROOTLEN = 40;
+  var COLORS = [['', 'なし'], ['g', '若草'], ['p', '桃'], ['y', '山吹'], ['o', '橙'], ['c', '水'], ['b', '空'], ['t', '青竹'], ['v', '藤'], ['r', '珊瑚'], ['n', '灰']];
+  var COLOR_KEYS = COLORS.map(function (c) { return c[0]; });
+  var AUTO = ['b', 'g', 'o', 'p', 'c', 'y', 'v', 't', 'r']; // 色を決めていない枝に順に割り当てる
+  var DATA_KEY = 'mindmap-pwa-data-v1';
+  var CONF_KEY = 'mindmap-pwa-sync-v1';
+  var UI_KEY = 'mindmap-pwa-ui-v1';
+  var CODE_PREFIX = 'MINDMAP1:';
+
+  // ---------- データ ----------
+  // 項目（ノード）を1件ずつ持つ：{id, m: マップ（中心）のid, p: 親のid（中心は null）, o: 並び順, t, c, d, x: 削除した時刻, u: 更新時刻}
+  var nodes = {};
+  var dirty = {};     // サーバーへ送っていない項目
+  var conf = null;    // {u: 同期URL, k: 合言葉, e: 暗号の鍵}
+  var curMap = null;
+  var collapsed = {};
+  var undoStack = [];
+  var sync = { busy: false, again: false, timer: null, last: 0, rev: 0, state: 'off', err: '' };
+  var lastU = 0;
+
+  function now() { var n = Date.now(); lastU = n > lastU ? n : lastU + 1; return lastU; }
+  function uid() { return 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function clone(x) { return JSON.parse(JSON.stringify(x)); }
+  function clip(t, n) { return Array.from(typeof t === 'string' ? t.replace(/\r/g, '') : '').slice(0, n).join(''); }
+  function normNode(r, id) {
+    if (!r || typeof r !== 'object' || !id) return null;
+    var p = typeof r.p === 'string' && r.p ? r.p : null;
+    return {
+      id: id,
+      m: p ? (typeof r.m === 'string' && r.m ? r.m : '') : id,
+      p: p,
+      o: isFinite(+r.o) ? +r.o : 0,
+      t: clip(r.t, p ? MAXLEN : ROOTLEN),
+      c: COLOR_KEYS.indexOf(r.c) >= 0 ? r.c : '',
+      d: !!r.d,
+      x: +r.x || 0,
+      u: +r.u || 0
+    };
+  }
+
+  // 生きている項目の親 → 子の一覧（削除済みの親の下にある項目は表示しない）
+  var kidsOf = {};
+  function index() {
+    kidsOf = {};
+    Object.keys(nodes).forEach(function (id) {
+      var n = nodes[id];
+      if (n.x || !n.p) return;
+      (kidsOf[n.p] = kidsOf[n.p] || []).push(n);
+    });
+    Object.keys(kidsOf).forEach(function (k) { kidsOf[k].sort(function (a, b) { return a.o - b.o || (a.id < b.id ? -1 : 1); }); });
+  }
+  function kids(id) { return kidsOf[id] || []; }
+  function desc(id) { var out = []; kids(id).forEach(function (k) { out.push(k.id); out = out.concat(desc(k.id)); }); return out; }
+  function maps() { return Object.keys(nodes).map(function (k) { return nodes[k]; }).filter(function (n) { return !n.p && !n.x; }); }
+  function mapUpdated(id) { var u = nodes[id].u; desc(id).forEach(function (k) { if (nodes[k].u > u) u = nodes[k].u; }); return u; }
+  function sortedMaps() {
+    var list = maps().map(function (n) { return { n: n, u: mapUpdated(n.id) }; });
+    list.sort(function (a, b) { return b.u - a.u; });
+    return list;
+  }
+  function label(n) { return (n && n.t ? n.t : '（空き）').replace(/\n/g, ' '); }
+  function mapName(n) { return n.t.replace(/\n/g, ' ').trim() || '無題のマップ'; }
+  function cur() { var n = curMap && nodes[curMap]; return n && !n.x && !n.p ? n : null; }
+  function ensureCur() { if (!cur()) { var l = sortedMaps(); curMap = l.length ? l[0].n.id : null; } }
+
+  // ---------- 保存 ----------
+  function lsGet(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  function loadAll() {
+    var d = lsGet(DATA_KEY);
+    if (d) {
+      (d.nodes || []).forEach(function (r) { var n = normNode(r, r && r.id); if (n) nodes[n.id] = n; });
+      (d.dirty || []).forEach(function (id) { if (nodes[id]) dirty[id] = true; });
+      sync.last = +d.last || 0;
+      sync.rev = +d.rev || 0;
+    }
+    Object.keys(nodes).forEach(function (k) { if (nodes[k].u > lastU) lastU = nodes[k].u; });
+    conf = lsGet(CONF_KEY);
+    if (conf && !conf.e) conf = null;
+    var u = lsGet(UI_KEY) || {};
+    if (u.curMap) curMap = u.curMap;
+    if (u.collapsed && typeof u.collapsed === 'object') collapsed = u.collapsed;
+  }
+  function saveData() {
+    var ok = lsSet(DATA_KEY, { nodes: Object.keys(nodes).map(function (k) { return nodes[k]; }), dirty: Object.keys(dirty), last: sync.last, rev: sync.rev });
+    if (!ok) setStatus('この端末に保存できませんでした。JSONで書き出して保管してください。', true);
+  }
+  function saveUI() { lsSet(UI_KEY, { curMap: curMap, collapsed: collapsed }); }
+
+  // ---------- 状態表示 ----------
+  function hm(n) { var d = new Date(n); return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); }
+  function fmtDate(n) { var d = new Date(n); return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + hm(n); }
+  function setStatus(t, err) { var s = $('#status'); s.textContent = t; s.className = 'status' + (err ? ' err' : ''); }
+  function showSyncState() {
+    $('#syncBtn').dataset.state = sync.state;
+    var pending = Object.keys(dirty).length;
+    if (!conf) { setStatus('同期は未設定です（この端末だけに保存）。右上の雲マークから設定できます。'); return; }
+    if (sync.state === 'busy') { setStatus('同期中…'); return; }
+    if (sync.state === 'error') {
+      var hard = sync.err !== 'network';
+      setStatus(hard ? E2ESync.message(sync.err) : 'オフラインです。変更はこの端末に保存済みで、つながると自動で同期します。' + (pending ? '（未送信 ' + pending + '件）' : ''), hard);
+      return;
+    }
+    setStatus(pending ? '変更を送信待ち…' : (sync.last ? '同期済み ' + hm(sync.last) + '（スマホ・PC共通・暗号化）' : '同期の準備中…'));
+  }
+
+  // ---------- 同期 ----------
+  function scheduleSync(ms) {
+    if (!conf) return;
+    clearTimeout(sync.timer);
+    sync.timer = setTimeout(runSync, ms);
+  }
+  function runSync() {
+    if (!conf) return Promise.resolve();
+    if (sync.busy) { sync.again = true; return Promise.resolve(); }
+    sync.busy = true;
+    sync.state = 'busy';
+    showSyncState();
+    var sendIds = Object.keys(dirty).filter(function (id) { return nodes[id]; });
+    var recs = sendIds.map(function (id) {
+      var n = nodes[id];
+      return { id: 'n:' + id, u: n.u, data: { m: n.m, p: n.p, o: n.o, t: n.t, c: n.c, d: n.d, x: n.x } };
+    });
+    dirty = {};
+    return E2ESync.exchange(conf, sync.rev, recs)
+      .then(function (res) {
+        applyServer(res.recs);
+        sync.rev = res.rev;
+        sync.state = 'ok';
+        sync.err = '';
+        sync.last = Date.now();
+      })
+      .catch(function (e) {
+        sendIds.forEach(function (id) { dirty[id] = true; });
+        sync.state = 'error';
+        sync.err = e && e.code ? e.code : 'network';
+      })
+      .then(function () {
+        sync.busy = false;
+        saveData();
+        render();
+        showSyncState();
+        if (sync.again) { sync.again = false; scheduleSync(300); }
+      });
+  }
+  // 項目ごとに新しい方を採る（2台で別の項目を同時に直しても両方残る）
+  function applyServer(recs) {
+    recs.forEach(function (r) {
+      if (r.id.indexOf('n:') !== 0) return;
+      var id = r.id.slice(2), mine = nodes[id];
+      if (mine && mine.u >= r.u) return;
+      var n = normNode(Object.assign({}, r.data, { u: r.u }), id);
+      if (!n) return;
+      nodes[id] = n;
+      delete dirty[id];
+      if (n.u > lastU) lastU = n.u;
+    });
+    ensureCur();
+    if (Object.keys(dirty).length) sync.again = true;
+  }
+
+  // ---------- 変更 ----------
+  // ids の項目を変える（作る）。元に戻せるよう、変更前の状態を積む
+  function change(ids, fn, mapId) {
+    undoStack.push({ map: mapId || curMap, before: ids.map(function (id) { return nodes[id] ? clone(nodes[id]) : { id: id, gone: true }; }) });
+    if (undoStack.length > 60) undoStack.shift();
+    fn();
+    ids.forEach(function (id) { if (nodes[id]) { nodes[id].u = now(); dirty[id] = true; } });
+    afterChange();
+  }
+  function afterChange() {
+    saveData();
+    saveUI();
+    if (conf) { if (sync.state !== 'error') sync.state = 'ok'; scheduleSync(1200); }
+    render();
+    showSyncState();
+  }
+  function undo() {
+    var u = undoStack.pop();
+    if (!u) return;
+    u.before.forEach(function (s) {
+      if (s.gone) {
+        if (nodes[s.id]) { nodes[s.id].x = now(); nodes[s.id].u = lastU; dirty[s.id] = true; }
+      } else {
+        var n = clone(s);
+        n.u = now();
+        nodes[s.id] = n;
+        dirty[s.id] = true;
+      }
+    });
+    curMap = u.map;
+    index();
+    ensureCur();
+    afterChange();
+  }
+
+  function newNode(id, fields) {
+    return { id: id, m: fields.m, p: fields.p, o: fields.o, t: fields.t || '', c: fields.c || '', d: !!fields.d, x: 0, u: 0 };
+  }
+  function newMap(text) {
+    var id = uid();
+    change([id], function () { nodes[id] = newNode(id, { m: id, p: null, o: 0, t: text || '' }); }, id);
+    curMap = id;
+    saveUI();
+    render();
+    return id;
+  }
+  // parentId の子として追加。afterId があればその直後、なければ末尾
+  function addNode(parentId, afterId, f) {
+    index();
+    var par = nodes[parentId];
+    if (!par) return null;
+    var sib = kids(parentId), o;
+    var i = afterId ? sib.findIndex(function (n) { return n.id === afterId; }) : -1;
+    if (i >= 0) o = sib[i + 1] ? (sib[i].o + sib[i + 1].o) / 2 : sib[i].o + 1;
+    else o = sib.length ? sib[sib.length - 1].o + 1 : 0;
+    var id = uid();
+    collapsed[parentId] = false;
+    change([id], function () { nodes[id] = newNode(id, { m: par.m, p: parentId, o: o, t: f.t, c: f.c, d: f.d }); });
+    return id;
+  }
+  function moveNode(id, dir) {
+    index();
+    var n = nodes[id], sib = kids(n.p);
+    var i = sib.findIndex(function (x) { return x.id === id; }), j = i + dir;
+    if (i < 0 || j < 0 || j >= sib.length) return false;
+    var other = sib[j];
+    if (n.o === other.o) {
+      change(sib.map(function (x) { return x.id; }), function () {
+        sib.forEach(function (x, k) { nodes[x.id].o = k; });
+        nodes[id].o = j; nodes[other.id].o = i;
+      });
+    } else {
+      change([id, other.id], function () { var t = nodes[id].o; nodes[id].o = nodes[other.id].o; nodes[other.id].o = t; });
+    }
+    return true;
+  }
+  // ひとつ上の階層へ（親のすぐ後ろに並べる）
+  function outdent(id) {
+    index();
+    var n = nodes[id], par = nodes[n.p];
+    if (!par || !par.p) return false;
+    var sib = kids(par.p), i = sib.findIndex(function (x) { return x.id === par.id; });
+    var o = sib[i + 1] ? (sib[i].o + sib[i + 1].o) / 2 : sib[i].o + 1;
+    change([id], function () { nodes[id].p = par.p; nodes[id].o = o; });
+    return true;
+  }
+  // すぐ上に並んでいる項目の子にする（末尾に付く）
+  function indent(id) {
+    index();
+    var n = nodes[id], sib = kids(n.p), i = sib.findIndex(function (x) { return x.id === id; });
+    if (i <= 0) return false;
+    var prev = sib[i - 1], pk = kids(prev.id);
+    collapsed[prev.id] = false;
+    change([id], function () { nodes[id].p = prev.id; nodes[id].o = pk.length ? pk[pk.length - 1].o + 1 : 0; });
+    return true;
+  }
+  function removeNode(id) {
+    index();
+    var ids = [id].concat(desc(id));
+    var t = now();
+    change(ids, function () { ids.forEach(function (k) { nodes[k].x = t; }); }, nodes[id].m);
+  }
+
+  // ---------- 描画 ----------
+  function render() {
+    index();
+    var root = cur();
+    $('#mapName').textContent = root ? mapName(root) : 'マップなし';
+    $('#undoBtn').disabled = !undoStack.length;
+    $('#emptyState').hidden = !!root;
+    $('#emptySync').hidden = !!conf;
+    $('#vm').hidden = !root;
+    if (!$('#csWrap').hidden) renderList();
+    if (!root) return;
+    var tree = $('#tree');
+    tree.textContent = '';
+    tree.appendChild(buildNode(root, 0, '', 0));
+  }
+  function nodeBtn(n, lv) {
+    var el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'node';
+    if (n.c && lv > 0) { el.classList.add('filled'); el.style.setProperty('--own', 'var(--p-' + n.c + ')'); }
+    if (n.c && lv === 0) { el.classList.add('filled'); el.style.setProperty('--k', 'var(--p-' + n.c + ')'); }
+    if (n.d) el.classList.add('done');
+    if (n.t) el.textContent = n.t;
+    else { el.classList.add('empty'); el.textContent = lv === 0 ? '中心のテーマ' : '（空き）'; }
+    el.setAttribute('aria-label', label(n) + (n.d ? '（達成）' : '') + ' を編集');
+    el.addEventListener('click', function () { openEditor(n.id); });
+    return el;
+  }
+  function buildNode(n, lv, branch, idx) {
+    var li = document.createElement('li');
+    li.className = lv === 0 ? 'root' : lv === 1 ? 'branch' : 'leaf';
+    var k = lv === 1 ? (n.c || AUTO[idx % AUTO.length]) : branch;
+    if (k) li.style.setProperty('--k', 'var(--p-' + k + ')');
+    var row = document.createElement('div');
+    row.className = 'nrow';
+    row.appendChild(nodeBtn(n, lv));
+    var ks = kids(n.id);
+    var isC = lv > 0 && !!collapsed[n.id];
+    if (ks.length && lv > 0) {
+      row.classList.add('has-fold');
+      var fold = document.createElement('button');
+      fold.type = 'button';
+      fold.className = 'fold';
+      fold.setAttribute('aria-expanded', String(!isC));
+      fold.setAttribute('aria-label', label(n) + 'を' + (isC ? '開く' : '閉じる'));
+      fold.innerHTML = (isC ? '▸' : '▾') + '<span class="ct"></span>';
+      fold.querySelector('.ct').textContent = desc(n.id).length;
+      fold.addEventListener('click', function () { collapsed[n.id] = !isC; saveUI(); render(); });
+      row.appendChild(fold);
+    }
+    li.appendChild(row);
+    if (ks.length && !isC) {
+      var ul = document.createElement('ul');
+      ks.forEach(function (c, i) { ul.appendChild(buildNode(c, lv + 1, k, i)); });
+      li.appendChild(ul);
+    }
+    return li;
+  }
+
+  // ---------- 編集 ----------
+  var ed = null;       // {mode: 'edit', id} / {mode: 'new', parent, after}
+  var edColor = '';
+  var delArmedEd = false, delTimerEd;
+  function trail(id) {
+    var names = [], n = nodes[id], guard = 0;
+    while (n && guard++ < 100) { names.unshift(label(n)); n = n.p ? nodes[n.p] : null; }
+    return names.join(' › ');
+  }
+  function openEditor(id, mode, after) {
+    index();
+    mode = mode || 'edit';
+    var isNew = mode === 'new';
+    var n = isNew ? { t: '', c: '', d: false, p: id } : nodes[id];
+    if (!n || (!isNew && n.x)) return;
+    ed = isNew ? { mode: 'new', parent: id, after: after || null } : { mode: 'edit', id: id };
+    var isRoot = !isNew && !n.p;
+    ed.limit = isRoot ? ROOTLEN : MAXLEN;
+    $('#edText').maxLength = ed.limit;
+    $('#edTitle').textContent = isNew ? '項目を追加' : isRoot ? '中心のテーマを編集' : '項目を編集';
+    $('#edWhere').textContent = isNew ? trail(id) + ' の下' : (n.p ? trail(n.p) + ' の下' : '');
+    $('#edText').value = n.t;
+    $('#edDone').checked = n.d;
+    edColor = n.c;
+    $('#edStruct').hidden = isNew;
+    $('#edAddSib').hidden = isRoot;
+    $('#edUp').hidden = $('#edDown').hidden = $('#edOut').hidden = $('#edIn').hidden = isRoot;
+    if (!isNew && !isRoot) {
+      var sib = kids(n.p), i = sib.findIndex(function (x) { return x.id === id; });
+      $('#edUp').disabled = i <= 0;
+      $('#edDown').disabled = i >= sib.length - 1;
+      $('#edIn').disabled = i <= 0;
+      $('#edOut').disabled = !nodes[n.p] || !nodes[n.p].p;
+    }
+    $('#edNext').hidden = !isNew;
+    $('#edDel').hidden = isNew;
+    $('#edMsg').textContent = '';
+    disarmDel();
+    paintColors();
+    updateCount();
+    $('#edWrap').hidden = false;
+    setTimeout(function () { var t = $('#edText'); t.focus(); t.setSelectionRange(t.value.length, t.value.length); }, 30);
+  }
+  function closeEditor() { $('#edWrap').hidden = true; ed = null; disarmDel(); }
+  function paintColors() {
+    var box = $('#edColors');
+    box.textContent = '';
+    COLORS.forEach(function (c) {
+      var s = document.createElement('button');
+      s.type = 'button';
+      s.className = 'sw' + (c[0] ? '' : ' none');
+      if (c[0]) s.style.setProperty('--k', 'var(--p-' + c[0] + ')');
+      s.textContent = c[1];
+      s.setAttribute('aria-pressed', String(edColor === c[0]));
+      s.addEventListener('click', function () { edColor = c[0]; paintColors(); });
+      box.appendChild(s);
+    });
+  }
+  function updateCount() {
+    var lim = ed ? ed.limit : MAXLEN;
+    var n = Array.from($('#edText').value).length;
+    var el = $('#edCount');
+    el.textContent = n + ' / ' + lim;
+    el.classList.toggle('over', n >= lim);
+  }
+  function readFields() {
+    return { t: clip($('#edText').value.replace(/^\s+|\s+$/g, ''), ed.limit), d: $('#edDone').checked, c: edColor };
+  }
+  // 保存して、編集していた（追加した）項目の id を返す
+  function saveEditor() {
+    if (!ed) return null;
+    var e = ed, f = readFields();
+    closeEditor();
+    if (e.mode === 'new') {
+      if (!f.t) return null;
+      return addNode(e.parent, e.after, f);
+    }
+    var n = nodes[e.id];
+    if (!n || (n.t === f.t && n.d === f.d && n.c === f.c)) return e.id;
+    change([e.id], function () { n.t = f.t; n.c = f.c; n.d = f.d; });
+    return e.id;
+  }
+  function disarmDel() {
+    delArmedEd = false;
+    clearTimeout(delTimerEd);
+    var b = $('#edDel');
+    b.textContent = ed && ed.id && nodes[ed.id] && !nodes[ed.id].p ? 'マップを削除' : '削除';
+    b.classList.remove('armed');
+  }
+
+  // ---------- マップ一覧 ----------
+  var delArmed = null, delTimer;
+  function renderList() {
+    var ul = $('#csList');
+    ul.textContent = '';
+    var list = sortedMaps();
+    if (!list.length) {
+      var li0 = document.createElement('li');
+      li0.className = 'note';
+      li0.textContent = 'まだマップがありません。';
+      ul.appendChild(li0);
+    }
+    list.forEach(function (x) {
+      var n = x.n, id = n.id;
+      var li = document.createElement('li');
+      var o = document.createElement('button');
+      o.type = 'button';
+      o.className = 'copen';
+      o.setAttribute('aria-current', String(id === curMap));
+      var b = document.createElement('b');
+      b.textContent = mapName(n);
+      var s = document.createElement('span');
+      s.textContent = desc(id).length + ' 項目 · 更新 ' + fmtDate(x.u);
+      o.appendChild(b);
+      o.appendChild(s);
+      o.addEventListener('click', function () { curMap = id; saveUI(); closeList(); render(); });
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn small danger' + (delArmed === id ? ' armed' : '');
+      del.textContent = delArmed === id ? '削除する' : '削除';
+      del.setAttribute('aria-label', mapName(n) + 'を削除');
+      del.addEventListener('click', function () {
+        if (delArmed !== id) {
+          delArmed = id;
+          clearTimeout(delTimer);
+          delTimer = setTimeout(function () { delArmed = null; renderList(); }, 4000);
+          renderList();
+          return;
+        }
+        delArmed = null;
+        removeNode(id);
+        ensureCur();
+        saveUI();
+        render();
+        csMsg('削除しました。↶ で元に戻せます。');
+      });
+      li.appendChild(o);
+      li.appendChild(del);
+      ul.appendChild(li);
+    });
+    $('#csDup').hidden = !cur();
+  }
+  function openList() { delArmed = null; $('#csCopyBox').hidden = true; csMsg(''); renderList(); $('#csWrap').hidden = false; }
+  function closeList() { $('#csWrap').hidden = true; }
+  function csMsg(t, err) { var m = $('#csMsg'); m.textContent = t; m.className = 'msg' + (err ? ' err' : ''); }
+
+  // 木（{t, c, d, k: [子…]}）を新しいマップとして足す
+  function addTree(tree) {
+    var ids = [], made = [];
+    var walk = function (src, p, m, o) {
+      var id = uid();
+      ids.push(id);
+      made.push(newNode(id, { m: m || id, p: p, o: o, t: clip(src.t, p ? MAXLEN : ROOTLEN), c: COLOR_KEYS.indexOf(src.c) >= 0 ? src.c : '', d: !!src.d }));
+      (src.k || []).slice(0, 2000).forEach(function (k, i) { walk(k, id, m || id, i); });
+      return id;
+    };
+    var rootId = walk(tree, null, null, 0);
+    change(ids, function () { made.forEach(function (n) { nodes[n.id] = n; }); }, rootId);
+    return rootId;
+  }
+  function toTree(id) {
+    var n = nodes[id];
+    var o = { t: n.t, c: n.c, d: n.d };
+    var ks = kids(id);
+    if (ks.length) o.k = ks.map(function (k) { return toTree(k.id); });
+    return o;
+  }
+  // マンダラチャート帳のチャート → 中心・テーマ・行動の木
+  function mandalaToTree(ch) {
+    var ORDER = [0, 1, 2, 5, 8, 7, 6, 3];
+    var b = ch.blocks, cell = function (x) { return x && typeof x === 'object' ? x : {}; };
+    var center = cell(b[4] && b[4][4]);
+    var subK = function (arr) { return (Array.isArray(arr) ? arr : []).map(function (k) { return { t: k.t, c: k.c, d: k.d, k: subK(k.k) }; }); };
+    var t = { t: center.t, c: center.c, d: center.d, k: [] };
+    ORDER.forEach(function (bi) {
+      var th = cell(b[4] && b[4][bi]);
+      var acts = ORDER.map(function (i) { return cell(b[bi] && b[bi][i]); }).filter(function (a) { return a.t || (a.k && a.k.length); });
+      if (!th.t && !acts.length) return;
+      t.k.push({ t: th.t, c: th.c, d: th.d, k: acts.map(function (a) { return { t: a.t, c: a.c, d: a.d, k: subK(a.k) }; }) });
+    });
+    return t;
+  }
+  function outline(id) {
+    var out = [];
+    var walk = function (nid, lv) {
+      var n = nodes[nid];
+      out.push((lv ? new Array(lv).join('  ') + '- ' : '◎ ') + n.t.replace(/\n/g, ' ') + (n.d ? ' ✓' : ''));
+      kids(nid).forEach(function (k) { walk(k.id, lv + 1); });
+    };
+    walk(id, 0);
+    return out.join('\n');
+  }
+  function stamp() {
+    var d = new Date();
+    return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+  }
+  function exportJSON() {
+    index();
+    var data = JSON.stringify({ app: 'mindmap', v: 1, exported: new Date().toISOString(), maps: sortedMaps().map(function (x) { return toTree(x.n.id); }) }, null, 1);
+    var filename = 'mindmap_' + stamp() + '.json';
+    var file = null;
+    try { file = new File([data], filename, { type: 'application/json' }); } catch (e) { /* 古い環境 */ }
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: filename }).then(function () { csMsg('書き出しました。'); }, function () { csMsg('書き出しを取りやめました。'); });
+      return;
+    }
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    csMsg(filename + ' を書き出しました。');
+  }
+  function importFile(file) {
+    var r = new FileReader();
+    r.onload = function () {
+      var raw;
+      try { raw = JSON.parse(r.result); } catch (e) { csMsg('JSONとして読めませんでした。書き出したファイルを選んでください。', true); return; }
+      var trees = [];
+      if (raw && Array.isArray(raw.maps)) trees = raw.maps;
+      else if (raw && Array.isArray(raw.charts)) trees = raw.charts.filter(function (c) { return c && Array.isArray(c.blocks); }).map(mandalaToTree);
+      else if (raw && Array.isArray(raw.blocks)) trees = [mandalaToTree(raw)];
+      var last = null;
+      trees.forEach(function (t) { if (t && typeof t === 'object') last = addTree(t); });
+      if (!last) { csMsg('マップが見つかりませんでした。', true); return; }
+      curMap = last;
+      saveUI();
+      render();
+      csMsg(trees.length + '件のマップを読み込みました。');
+    };
+    r.readAsText(file);
+  }
+
+  // ---------- 同期の設定 ----------
+  function stMsg(t, err) { var m = $('#stMsg'); m.textContent = t; m.className = 'msg' + (err ? ' err' : ''); }
+  var stOffArmed = false;
+  function renderSettings() {
+    $('#stState').textContent = conf
+      ? '接続済み：この端末の変更は暗号化してGoogleドライブに保存され、スマホとPCで共有されます。' + (sync.last ? '最終同期 ' + fmtDate(sync.last) : '')
+      : '未接続：いまはこの端末の中だけに保存しています。接続コードを貼り付けると、Googleドライブ経由でスマホとPCが同じ内容になります。';
+    $('#stConnectBox').hidden = !!conf;
+    $('#stConnected').hidden = !conf;
+    $('#stCodeView').hidden = true;
+    $('#stOff').textContent = '接続を解除';
+    stOffArmed = false;
+  }
+  function openSettings() { stMsg(''); renderSettings(); $('#stWrap').hidden = false; }
+  function closeSettings() { $('#stWrap').hidden = true; }
+
+  // ---------- イベント ----------
+  $('#undoBtn').addEventListener('click', undo);
+  $('#mapBtn').addEventListener('click', openList);
+  $('#syncBtn').addEventListener('click', openSettings);
+  $('#addTop').addEventListener('click', function () { if (cur()) openEditor(curMap, 'new'); });
+  $('#openAll').addEventListener('click', function () { collapsed = {}; saveUI(); render(); });
+  $('#closeAll').addEventListener('click', function () { if (!cur()) return; kids(curMap).forEach(function (k) { collapsed[k.id] = true; }); saveUI(); render(); });
+  $('#emptyNew').addEventListener('click', function () { var id = newMap(''); openEditor(id); });
+  $('#emptySync').addEventListener('click', openSettings);
+
+  $('#csClose').addEventListener('click', closeList);
+  $('#csWrap').addEventListener('click', function (e) { if (e.target === $('#csWrap')) closeList(); });
+  $('#csNew').addEventListener('click', function () { closeList(); var id = newMap(''); openEditor(id); });
+  $('#csDup').addEventListener('click', function () {
+    var root = cur(); if (!root) return;
+    index();
+    var t = toTree(root.id);
+    t.t = clip(t.t + '（コピー）', ROOTLEN);
+    curMap = addTree(t);
+    saveUI();
+    render();
+    csMsg('複製しました。');
+  });
+  $('#csExport').addEventListener('click', exportJSON);
+  $('#csImport').addEventListener('click', function () { $('#csFile').click(); });
+  $('#csFile').addEventListener('change', function (e) { var f = e.target.files[0]; if (f) importFile(f); e.target.value = ''; });
+  $('#csCopy').addEventListener('click', function () {
+    var root = cur(); if (!root) return;
+    index();
+    var text = outline(root.id);
+    var box = $('#csCopyBox');
+    box.value = text;
+    var fallback = function () { box.hidden = false; box.focus(); box.select(); csMsg('下のテキストを選択してコピーしてください。'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { box.hidden = true; csMsg('テキストをコピーしました。メモアプリなどに貼り付けできます。'); }, fallback);
+    } else fallback();
+  });
+
+  $('#edSave').addEventListener('click', function () { saveEditor(); });
+  $('#edNext').addEventListener('click', function () {
+    var e = ed, id = saveEditor();
+    openEditor(e.parent, 'new', id || e.after);
+  });
+  $('#edAddChild').addEventListener('click', function () { var id = saveEditor(); if (id) openEditor(id, 'new'); });
+  $('#edAddSib').addEventListener('click', function () { var id = saveEditor(); if (id && nodes[id].p) openEditor(nodes[id].p, 'new', id); });
+  var structOp = function (fn) { return function () { var id = saveEditor(); if (!id) return; fn(id); openEditor(id); }; };
+  $('#edUp').addEventListener('click', structOp(function (id) { moveNode(id, -1); }));
+  $('#edDown').addEventListener('click', structOp(function (id) { moveNode(id, 1); }));
+  $('#edOut').addEventListener('click', structOp(outdent));
+  $('#edIn').addEventListener('click', structOp(indent));
+  $('#edCancel').addEventListener('click', closeEditor);
+  $('#edWrap').addEventListener('click', function (e) { if (e.target === $('#edWrap')) closeEditor(); });
+  $('#edText').addEventListener('input', updateCount);
+  $('#edText').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (ed && ed.mode === 'new') $('#edNext').click(); else saveEditor(); }
+  });
+  $('#edDel').addEventListener('click', function () {
+    if (!ed || ed.mode !== 'edit') return;
+    var b = $('#edDel');
+    if (!delArmedEd) {
+      delArmedEd = true;
+      index();
+      var isRoot = !nodes[ed.id].p, nd = desc(ed.id).length;
+      b.textContent = isRoot ? 'もう一度でマップごと削除' : nd ? 'もう一度で下の ' + nd + ' 項目ごと削除' : 'もう一度で削除';
+      b.classList.add('armed');
+      delTimerEd = setTimeout(disarmDel, 4000);
+      return;
+    }
+    var id = ed.id;
+    closeEditor();
+    removeNode(id);
+    ensureCur();
+    saveUI();
+    render();
+  });
+
+  $('#stClose').addEventListener('click', closeSettings);
+  $('#stWrap').addEventListener('click', function (e) { if (e.target === $('#stWrap')) closeSettings(); });
+  $('#stConnect').addEventListener('click', function () {
+    if (!E2ESync.decodeCode(CODE_PREFIX, $('#stCode').value)) { stMsg(E2ESync.message('bad_code'), true); return; }
+    stMsg('接続を確認しています…');
+    $('#stConnect').disabled = true;
+    E2ESync.connect(CODE_PREFIX, $('#stCode').value).then(function (c) {
+      conf = c;
+      lsSet(CONF_KEY, conf);
+      sync.rev = 0;
+      Object.keys(nodes).forEach(function (id) { dirty[id] = true; });
+      $('#stCode').value = '';
+      return runSync().then(function () {
+        renderSettings();
+        stMsg(sync.state === 'ok' ? '接続しました。2台目以降の端末には「端末用の接続コードを表示」で出るコードを貼ってください。' : E2ESync.message(sync.err), sync.state !== 'ok');
+      });
+    }, function (e) {
+      stMsg(E2ESync.message(e && e.code), true);
+    }).then(function () { $('#stConnect').disabled = false; });
+  });
+  $('#stSyncNow').addEventListener('click', function () {
+    stMsg('同期しています…');
+    runSync().then(function () {
+      if (sync.state === 'ok') stMsg('同期しました（' + hm(sync.last) + '）。');
+      else stMsg(E2ESync.message(sync.err), true);
+      renderSettings();
+    });
+  });
+  $('#stShowCode').addEventListener('click', function () {
+    var box = $('#stCodeView');
+    box.value = E2ESync.encodeCode(CODE_PREFIX, conf);
+    box.hidden = false;
+    box.focus();
+    box.select();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(box.value).then(function () { stMsg('端末用の接続コード（鍵入り）をコピーしました。もう一方の端末の「同期の設定」に貼り付けてください。控えも残しておいてください。'); }, function () { stMsg('表示されたコードを選択してコピーしてください。'); });
+    }
+  });
+  $('#stOff').addEventListener('click', function () {
+    if (!stOffArmed) {
+      stOffArmed = true;
+      $('#stOff').textContent = 'もう一度で解除';
+      setTimeout(function () { stOffArmed = false; $('#stOff').textContent = '接続を解除'; }, 4000);
+      return;
+    }
+    conf = null;
+    try { localStorage.removeItem(CONF_KEY); } catch (e) { /* 無視 */ }
+    sync.state = 'off';
+    sync.rev = 0;
+    saveData();
+    renderSettings();
+    showSyncState();
+    render();
+    stMsg('接続を解除しました。データはこの端末に残っています。');
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (!$('#edWrap').hidden) closeEditor();
+    else if (!$('#csWrap').hidden) closeList();
+    else if (!$('#stWrap').hidden) closeSettings();
+  });
+
+  // 画面に戻ったとき・通信が戻ったとき・一定間隔で同期
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') scheduleSync(100); });
+  window.addEventListener('online', function () { scheduleSync(100); });
+  window.addEventListener('pageshow', function () { scheduleSync(100); });
+  setInterval(function () { if (document.visibilityState === 'visible' && !sync.busy && $('#edWrap').hidden) runSync(); }, 20000);
+
+  // ---------- 起動 ----------
+  loadAll();
+  index();
+  ensureCur();
+  if (conf) sync.state = 'ok';
+  render();
+  showSyncState();
+  scheduleSync(50);
+
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* オフライン機能なしで動く */ });
+  }
+})();
+</script>
+</body>
+</html>
