@@ -16,13 +16,13 @@
     return prefix + btoa(unescape(encodeURIComponent(JSON.stringify(o))));
   }
   // 貼り付けた文字列から、最初のコードだけを取り出して読む
-  // （前後の余計な文字・改行・ゼロ幅文字・全角コロン・二重貼り付けがあっても読めるように）
+  // （前後の余計な文字・改行・ゼロ幅文字・全角コロン・二重貼り付け・先頭の小文字化があっても読めるように）
   function decodeCode(prefix, s) {
     s = String(s || '').replace(/[\s​-‍⁠﻿]+/g, '').replace(/：/g, ':');
-    var i = s.indexOf(prefix);
+    var i = s.toUpperCase().indexOf(prefix);
     if (i < 0) return null;
     var body = s.slice(i + prefix.length);
-    var next = body.indexOf(prefix);
+    var next = body.toUpperCase().indexOf(prefix);
     if (next >= 0) body = body.slice(0, next);
     var m = /^[A-Za-z0-9+\/_-]+=*/.exec(body);
     if (!m) return null;
