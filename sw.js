@@ -1,6 +1,6 @@
 // オフラインでも開けるように、アプリの画面を端末に保存する（同期の通信は対象外）
-var CACHE = 'mindmap-v5';
-var SHELL = ['./', 'index.html', 'e2esync.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+var CACHE = 'mindmap-v6';
+var SHELL = ['./', 'index.html', 'e2esync.js?v=3', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); }));
 });
