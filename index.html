@@ -371,6 +371,30 @@ legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bot
   .root > .nrow > .node { width: auto; max-width: 100%; min-width: 140px; text-align: left; }
   .branch > .nrow > .node, .leaf > .nrow > .node { width: auto; min-width: 120px; max-width: calc(100% - 32px); }
 }
+/* 招待コードの最初の画面（タイムバケットと同じ考え方：入れるまで使えない） */
+.gate {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--bg);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow-y: auto;
+  padding: calc(env(safe-area-inset-top, 0px) + 40px) max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px));
+}
+.gate-card {
+  width: min(100%, 440px);
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.gate-card h1 { font-family: var(--font-display); font-weight: 700; font-size: 22px; margin: 0; }
+.gate-card p { margin: 0; }
 @media (min-width: 700px) {
   .scrim { align-items: center; }
 }
@@ -406,6 +430,19 @@ legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bot
     <div class="map"><ul id="tree" class="tree"></ul></div>
   </section>
 </main>
+
+<!-- 招待コードの最初の画面 -->
+<div id="gate" class="gate" hidden>
+  <form class="gate-card" id="gateForm" aria-labelledby="gateTitle">
+    <h1 id="gateTitle">マインドマップ帳</h1>
+    <p class="note">このアプリは招待された方だけが使えます。管理者から受け取った招待コード（XXXX-XXXX）を入力してください。2台目以降の端末では、1台目で「同期用リンクをコピー」したリンクを貼ってください。</p>
+    <label for="gateCode" class="note">招待コードまたは同期用リンク</label>
+    <textarea id="gateCode" class="code" rows="2" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="XXXX-XXXX"></textarea>
+    <p id="gateMsg" class="msg err" role="status"></p>
+    <button class="btn primary" type="submit" id="gateBtn">はじめる</button>
+    <p class="note">名前やメールアドレスは要りません。書いた内容は端末で暗号化され、管理者にも見えません。</p>
+  </form>
+</div>
 
 <!-- 項目の編集 -->
 <div id="edWrap" class="scrim" hidden>
@@ -647,6 +684,9 @@ legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bot
         saveData();
         render();
         showSyncState();
+        if (sync.state === 'error' && (sync.err === 'bad_token' || sync.err === 'device_revoked')) {
+          showGate(sync.err === 'device_revoked' ? E2ESync.message('device_revoked') : '利用の許可を確認できませんでした。許可が取り消されたか、招待コードが作り直された可能性があります。新しい招待コードか同期用リンクを入力してください。');
+        }
         if (sync.again) { sync.again = false; scheduleSync(300); }
       });
   }
@@ -1156,23 +1196,54 @@ legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bot
 
   $('#stClose').addEventListener('click', closeSettings);
   $('#stWrap').addEventListener('click', function (e) { if (e.target === $('#stWrap')) closeSettings(); });
-  $('#stConnect').addEventListener('click', function () {
-    if (!S.decodeCode($('#stCode').value)) { stMsg(E2ESync.message('bad_code'), true); return; }
-    stMsg('接続を確認しています…');
-    $('#stConnect').disabled = true;
-    S.connect($('#stCode').value).then(function (c) {
+  // 招待コードか同期用リンクで接続する。done(ok, メッセージ)
+  function connectWith(text, done) {
+    var d = S.decodeCode(text);
+    if (!d) { done(false, E2ESync.message('bad_code')); return; }
+    // 作り直された招待コードを、すでに鍵を持つ端末で入れたときは、この端末の鍵のまま新しいコードにつなぐ
+    if (!d.e && conf && conf.e) text = S.linkFor({ u: d.u, k: d.k, e: conf.e });
+    S.connect(text).then(function (c) {
       conf = c;
       lsSet(CONF_KEY, conf);
       sync.rev = 0;
       Object.keys(nodes).forEach(function (id) { dirty[id] = true; });
-      $('#stCode').value = '';
       return runSync().then(function () {
-        renderSettings();
-        stMsg(sync.state === 'ok' ? '接続しました。ほかの端末では、この画面の「同期用リンクをコピー」で出るリンクを開くか貼ってください。' : E2ESync.message(sync.err), sync.state !== 'ok');
+        if (sync.state === 'ok') done(true, '接続しました。ほかの端末では、同期の画面の「同期用リンクをコピー」で出るリンクを開くか貼ってください。');
+        else done(false, E2ESync.message(sync.err));
       });
     }, function (e) {
-      stMsg(E2ESync.message(e && e.code), true);
-    }).then(function () { $('#stConnect').disabled = false; });
+      done(false, E2ESync.message(e && e.code));
+    });
+  }
+  $('#stConnect').addEventListener('click', function () {
+    stMsg('接続を確認しています…');
+    $('#stConnect').disabled = true;
+    connectWith($('#stCode').value, function (ok, m) {
+      if (ok) { $('#stCode').value = ''; hideGate(); }
+      renderSettings();
+      stMsg(m, !ok);
+      $('#stConnect').disabled = false;
+    });
+  });
+
+  // ---------- 招待コードの最初の画面 ----------
+  function showGate(m) {
+    $('#gate').hidden = false;
+    $('#gateMsg').textContent = m || '';
+    $('#gateBtn').disabled = false;
+  }
+  function hideGate() { $('#gate').hidden = true; $('#gateMsg').textContent = ''; }
+  $('#gateForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    $('#gateBtn').disabled = true;
+    $('#gateMsg').textContent = '確認しています…';
+    connectWith($('#gateCode').value, function (ok, m) {
+      $('#gateBtn').disabled = false;
+      if (!ok) { $('#gateMsg').textContent = m; return; }
+      $('#gateCode').value = '';
+      hideGate();
+      showSyncState();
+    });
   });
   $('#stSyncNow').addEventListener('click', function () {
     stMsg('同期しています…');
@@ -1208,6 +1279,8 @@ legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bot
     showSyncState();
     render();
     stMsg('接続を解除しました。データはこの端末に残っています。');
+    closeSettings();
+    showGate('この端末の接続を解除しました。使うときは、招待コードか同期用リンクを入力してください。');
   });
 
   document.addEventListener('keydown', function (e) {
@@ -1232,13 +1305,16 @@ legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bot
   showSyncState();
   scheduleSync(50);
 
-  // 同期用リンク（#c=…）で開いたときは、入力欄に入れて同期の画面を出す
-  if (/[#&]c=/.test(location.hash)) {
-    var linkCode = location.href;
-    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* 消せなくても続ける */ }
+  // 招待された人だけが使う：未接続の端末では、最初に招待コードの画面を出す
+  // 同期用リンク（#c=…）で開いたときは、その画面の入力欄に入れておく
+  var linkCode = /[#&]c=/.test(location.hash) ? location.href : '';
+  if (linkCode) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* 消せなくても続ける */ } }
+  if (!conf) {
+    $('#gateCode').value = linkCode;
+    showGate(linkCode ? '同期用リンクを読み込みました。「はじめる」を押してください。' : (typeof oldConf !== 'undefined' && oldConf ? '同期のしくみが新しくなりました。招待コードか同期用リンクを入力してください。' : ''));
+  } else if (linkCode) {
     openSettings();
-    if (!conf) { $('#stCode').value = linkCode; stMsg('同期用リンクを読み込みました。「接続する」を押してください。'); }
-    else stMsg('この端末はすでに接続済みです。別のリンクに切り替えるときは、いったん「接続を解除」してください。', true);
+    stMsg('この端末はすでに接続済みです。別のリンクに切り替えるときは、いったん「接続を解除」してください。', true);
   }
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
