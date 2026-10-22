@@ -23,6 +23,17 @@
     return t.slice(0, 4) + '-' + t.slice(4);
   }
 
+  // ホーム画面に追加したアプリとして開いているか
+  function standalone() {
+    return navigator.standalone === true || !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  }
+  // スマホのブラウザで開いている（ホーム画面のアプリで使うよう案内したい）か
+  function mobileBrowser() {
+    var ua = navigator.userAgent || '';
+    var mobile = /iPhone|iPad|Android/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    return mobile && !standalone();
+  }
+
   function create(cfg) {
     var prefix = cfg.prefix, url = cfg.url;
     var DEV_KEY = 'e2e-dev-' + prefix.replace(/[^A-Z0-9]/gi, '');
@@ -33,14 +44,17 @@
       if (!d || d.length < 16) { d = b64url(crypto.getRandomValues(new Uint8Array(12))); lsSet(DEV_KEY, d); }
       return d;
     }
+    // 端末の種類と、使っている場所（スマホはホーム画面のアプリかブラウザか）。
+    // 同じ iPhone でも、ホーム画面のアプリとブラウザは保存場所が別なので別の端末として数えられる。管理画面で見分けるため
     function devName() {
-      var ua = navigator.userAgent || '';
-      if (/iPhone/.test(ua)) return 'iPhone';
-      if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'iPad';
-      if (/Android/.test(ua)) return 'Android';
-      if (/Windows/.test(ua)) return 'Windows';
-      if (/Macintosh/.test(ua)) return 'Mac';
-      return 'その他';
+      var ua = navigator.userAgent || '', kind = 'その他';
+      if (/iPhone/.test(ua)) kind = 'iPhone';
+      else if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) kind = 'iPad';
+      else if (/Android/.test(ua)) kind = 'Android';
+      else if (/Windows/.test(ua)) kind = 'Windows';
+      else if (/Macintosh/.test(ua)) kind = 'Mac';
+      if (/^(iPhone|iPad|Android)$/.test(kind)) kind += standalone() ? '（ホーム画面）' : '（ブラウザ）';
+      return kind;
     }
 
     function encodeCode(c) {
@@ -175,5 +189,5 @@
   };
   function message(code) { return MSG[code] || MSG.server; }
 
-  g.E2ESync = { create: create, message: message };
+  g.E2ESync = { create: create, message: message, mobileBrowser: mobileBrowser };
 })(window);

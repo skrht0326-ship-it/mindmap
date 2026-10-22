@@ -395,6 +395,7 @@ legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bot
 }
 .gate-card h1 { font-family: var(--font-display); font-weight: 700; font-size: 22px; margin: 0; }
 .gate-card p { margin: 0; }
+.gate-home { color: var(--danger); font-weight: 700; }
 @media (min-width: 700px) {
   .scrim { align-items: center; }
 }
@@ -436,6 +437,7 @@ legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bot
   <form class="gate-card" id="gateForm" aria-labelledby="gateTitle">
     <h1 id="gateTitle">マインドマップ帳</h1>
     <p class="note">このアプリは招待された方だけが使えます。管理者から受け取った招待コード（XXXX-XXXX）を入力してください。2台目以降の端末では、1台目で「同期用リンクをコピー」したリンクを貼ってください。</p>
+    <p id="gateHome" class="note gate-home" hidden>スマホでは、ブラウザの共有ボタン →「ホーム画面に追加」をしてから、ホーム画面のアイコンで開いて入力してください。ブラウザとホーム画面のアプリは別の端末として数えられ、使える台数の枠を余分に使ってしまいます。</p>
     <label for="gateCode" class="note">招待コードまたは同期用リンク</label>
     <textarea id="gateCode" class="code" rows="2" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="XXXX-XXXX"></textarea>
     <p id="gateMsg" class="msg err" role="status"></p>
@@ -527,7 +529,7 @@ legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bot
     <p class="note">マップの中身はこの端末で暗号化してから送ります。Googleドライブには暗号文だけが保存され、管理者にも読めません。そのため「同期用リンク」をなくすと、ほかの端末からデータを取り出せなくなります。控えを安全な場所に保管してください。人に見せたり、公開の場所に貼ったりしないでください。</p>
   </section>
 </div>
-<script src="e2esync.js?v=3"></script>
+<script src="e2esync.js?v=4"></script>
 <script>
 (function () {
   'use strict';
@@ -1229,6 +1231,7 @@ legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bot
   // ---------- 招待コードの最初の画面 ----------
   function showGate(m) {
     $('#gate').hidden = false;
+    $('#gateHome').hidden = !E2ESync.mobileBrowser();
     $('#gateMsg').textContent = m || '';
     $('#gateBtn').disabled = false;
   }
