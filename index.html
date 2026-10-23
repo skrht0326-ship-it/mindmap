@@ -393,7 +393,30 @@ legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bot
   flex-direction: column;
   gap: 12px;
 }
-.gate-card h1 { font-family: var(--font-display); font-weight: 700; font-size: 22px; margin: 0; }
+.gate-title {
+  align-self: flex-start;
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface));
+  border: 1.5px solid color-mix(in srgb, var(--accent) 70%, var(--ink));
+  border-radius: 14px;
+  padding: 10px 32px;
+}
+.gate-title h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(22px, 5vw, 28px); letter-spacing: .1em; line-height: 1.2; margin: 0; }
+.gate-card p.lead { font-size: 15px; line-height: 1.7; }
+.gate-card .msg:not(.err) { color: var(--muted); }
+.gate-label { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--muted); }
+.gate-card input {
+  width: 100%;
+  min-height: 52px;
+  background: color-mix(in srgb, var(--line) 25%, var(--surface));
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 20px;
+  letter-spacing: .08em;
+  text-align: center;
+  color: var(--ink);
+}
 .gate-card p { margin: 0; }
 .gate-home { color: var(--danger); font-weight: 700; }
 @media (min-width: 700px) {
@@ -435,14 +458,14 @@ legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bot
 <!-- 招待コードの最初の画面 -->
 <div id="gate" class="gate" hidden>
   <form class="gate-card" id="gateForm" aria-labelledby="gateTitle">
-    <h1 id="gateTitle">マインドマップ帳</h1>
-    <p class="note">このアプリは招待された方だけが使えます。管理者から受け取った招待コード（XXXX-XXXX）を入力してください。2台目以降の端末では、1台目で「同期用リンクをコピー」したリンクを貼ってください。</p>
+    <div class="gate-title"><h1 id="gateTitle">マインドマップ帳</h1></div>
+    <p class="lead">このアプリは招待された方だけが使えます。管理者から受け取った招待コードを入力してください。</p>
     <p id="gateHome" class="note gate-home" hidden>スマホでは、ブラウザの共有ボタン →「ホーム画面に追加」をしてから、ホーム画面のアイコンで開いて入力してください。ブラウザとホーム画面のアプリは別の端末として数えられ、使える台数の枠を余分に使ってしまいます。</p>
-    <label for="gateCode" class="note">招待コードまたは同期用リンク</label>
-    <textarea id="gateCode" class="code" rows="2" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="XXXX-XXXX"></textarea>
-    <p id="gateMsg" class="msg err" role="status"></p>
+    <label for="gateCode" class="gate-label">招待コード</label>
+    <input id="gateCode" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="XXXX-XXXX">
+    <p id="gateMsg" class="msg" role="status"></p>
     <button class="btn primary" type="submit" id="gateBtn">はじめる</button>
-    <p class="note">名前やメールアドレスは要りません。書いた内容は端末で暗号化され、管理者にも見えません。</p>
+    <p class="note">コードの入力は、この端末では最初の1回だけです。2台目以降の端末では、1台目でコピーした同期用リンクを貼っても始められます。名前やメールアドレスは要りません。書いた内容は管理者にも見えません。</p>
   </form>
 </div>
 
@@ -1229,20 +1252,22 @@ legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bot
   });
 
   // ---------- 招待コードの最初の画面 ----------
-  function showGate(m) {
+  function gateMsg(t, err) { var g = $('#gateMsg'); g.textContent = t || ''; g.className = 'msg' + (err ? ' err' : ''); }
+  // m: 表示する文。info が true ならお知らせ（通常の色）、それ以外はエラー（赤）
+  function showGate(m, info) {
     $('#gate').hidden = false;
     $('#gateHome').hidden = !E2ESync.mobileBrowser();
-    $('#gateMsg').textContent = m || '';
+    gateMsg(m, !info);
     $('#gateBtn').disabled = false;
   }
   function hideGate() { $('#gate').hidden = true; $('#gateMsg').textContent = ''; }
   $('#gateForm').addEventListener('submit', function (e) {
     e.preventDefault();
     $('#gateBtn').disabled = true;
-    $('#gateMsg').textContent = '確認しています…';
+    gateMsg('確認しています…');
     connectWith($('#gateCode').value, function (ok, m) {
       $('#gateBtn').disabled = false;
-      if (!ok) { $('#gateMsg').textContent = m; return; }
+      if (!ok) { gateMsg(m, true); return; }
       $('#gateCode').value = '';
       hideGate();
       showSyncState();
@@ -1283,7 +1308,7 @@ legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bot
     render();
     stMsg('接続を解除しました。データはこの端末に残っています。');
     closeSettings();
-    showGate('この端末の接続を解除しました。使うときは、招待コードか同期用リンクを入力してください。');
+    showGate('この端末の接続を解除しました。使うときは、招待コードか同期用リンクを入力してください。', true);
   });
 
   document.addEventListener('keydown', function (e) {
@@ -1313,8 +1338,10 @@ legend { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bot
   var linkCode = /[#&]c=/.test(location.hash) ? location.href : '';
   if (linkCode) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* 消せなくても続ける */ } }
   if (!conf) {
-    $('#gateCode').value = linkCode;
-    showGate(linkCode ? '同期用リンクを読み込みました。「はじめる」を押してください。' : (typeof oldConf !== 'undefined' && oldConf ? '同期のしくみが新しくなりました。招待コードか同期用リンクを入力してください。' : ''));
+    var fromLink = linkCode ? S.decodeCode(linkCode) : null;
+    $('#gateCode').value = fromLink && !fromLink.e ? fromLink.k : linkCode;
+    if (fromLink && fromLink.e) showGate('同期用リンクを読み込みました。「はじめる」を押してください。', true);
+    else showGate(typeof oldConf !== 'undefined' && oldConf ? '同期のしくみが新しくなりました。招待コードか同期用リンクを入力してください。' : '', true);
   } else if (linkCode) {
     openSettings();
     stMsg('この端末はすでに接続済みです。別のリンクに切り替えるときは、いったん「接続を解除」してください。', true);
